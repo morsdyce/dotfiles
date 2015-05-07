@@ -120,3 +120,13 @@ alias reload="exec $SHELL -l"
 
 # Faster npm for Europeans
 command -v npm > /dev/null && alias npme="npm --registry http://registry.npmjs.eu/"
+
+# port forwarding alias
+forward() {
+    echo "rdr pass inet proto tcp from any to any port $1 -> 127.0.0.1 port $2" | sudo pfctl -ef -
+    echo "Forwarded port $1 to $2"
+}
+
+alias port-forward-enable=forward
+alias port-forward-disable="sudo pfctl -F all -f /etc/pf.conf"
+alias port-forward-list="sudo pfctl -s nat"
