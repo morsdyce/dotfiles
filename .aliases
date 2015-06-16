@@ -130,3 +130,6 @@ forward() {
 alias port-forward-enable=forward
 alias port-forward-disable="sudo pfctl -F all -f /etc/pf.conf"
 alias port-forward-list="sudo pfctl -s nat"
+
+# the fuck - fix last command run
+alias fuck='$(thefuck $(fc -ln -1))'
