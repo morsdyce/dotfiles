@@ -133,3 +133,13 @@ alias port-forward-list="sudo pfctl -s nat"
 
 # the fuck - fix last command run
 alias fuck='$(thefuck $(fc -ln -1))'
+
+#restart the bluetooth controller
+restartBluetooth() {
+    sudo -v
+    sudo kextunload -b com.apple.iokit.BroadcomBluetoothHostControllerUSBTransport
+    sudo kextload -b com.apple.iokit.BroadcomBluetoothHostControllerUSBTransport
+}
+
+alias bluetooth-reset=restartBluetooth
+alias btr=bluetooth-reset
