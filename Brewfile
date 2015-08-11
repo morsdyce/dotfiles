@@ -44,6 +44,10 @@ install rename
 install tree
 install webkit2png
 install zopfli
+install autojump
+install rbenv
+install ssh-copy-id
+install thefuck
 
 # Remove outdated versions from the cellar
 cleanup
