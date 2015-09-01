@@ -9,6 +9,395 @@ elif infocmp xterm-256color >/dev/null 2>&1; then
 	export TERM='xterm-256color';
 fi;
 
+
+NO_REMOTE_STATUS='--no-remote-status'
+
+dot_git=""
+cwd=""
+remote=""
+
+in_current_dir() {
+  local wd="$(pwd)"
+  if [[ "$wd" == $cwd ]]; then
+    cwd="$wd"
+    return 0
+  else
+    cwd="$wd"
+    return 1
+  fi
+}
+
+echodebug() {
+  echo "$@" 1>&2
+}
+
+debug_print() {
+  local debug=$1
+  local message=$2
+  if [[ $debug == "debug" ]]; then
+    echo $message
+  fi
+}
+
+dot_git() {
+  if in_current_dir && [[ -n "$dot_git" ]]; then
+    # cache dot_git to save calls to rev-parse
+    printf '%s' $dot_git
+  elif [ -d .git ]; then
+    dot_git=".git"
+    printf '%s' $dot_git
+  else
+    dot_git="$(git rev-parse --git-dir 2>/dev/null)"
+    printf '%s' $dot_git
+  fi
+}
+
+is_repo() {
+  if [[ -n "$(dot_git)" ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+git_root() {
+  if [ -d .git ]; then
+    printf '%s' "$(pwd)"
+  else
+    printf '%s' "$(git rev-parse --show-toplevel 2>/dev/null)"
+  fi
+}
+
+record_timestamp() {
+  if is_repo; then
+    touch "$(dot_git)/lastupdatetime"
+  fi
+}
+
+timestamp() {
+  if is_repo; then
+    printf '%s' "$(stat -f%m "$(dot_git)/lastupdatetime" 2>/dev/null || printf '%s' "0")"
+  fi
+}
+
+time_now() {
+  printf '%s' "$(date +%s)"
+}
+
+time_to_update() {
+  if is_repo; then
+    local timesincelastupdate="$(($(time_now) - $(timestamp)))"
+    local fiveminutes="$((5 * 60))"
+    if (( $timesincelastupdate > $fiveminutes )); then
+      # time to update return 0 (which is true)
+      return 0
+    else
+      # not time to update return 1 (which is false)
+      return 1
+    fi
+  else
+    return 1
+  fi
+}
+
+fetch() {
+  if time_to_update; then
+    record_timestamp
+    git fetch --quiet > /dev/null 2>&1
+  fi
+}
+
+commit_short_sha() {
+  if is_repo; then
+    printf '%s' "$(git rev-parse --short HEAD 2>/dev/null)"
+  fi
+}
+
+branch_name() {
+  name="$(git symbolic-ref --short HEAD 2>/dev/null)"
+  retcode="$?"
+  if [[ "$retcode" == "0" ]]; then
+    printf %s "$name"
+  else
+    return 1
+  fi
+}
+
+branch_ref() {
+  if is_repo; then
+    printf '%s' "$(branch_name || commit_short_sha)"
+  fi
+}
+
+readable_branch_name() {
+  if is_repo; then
+    printf '%s' "$(branch_name || printf '%s' "detached@$(commit_short_sha)")"
+  fi
+}
+
+remote_branch_name() {
+  local localRef="\/$(branch_name)$"
+  if [[ -n "$localRef" ]]; then
+    local remoteBranch="$(git for-each-ref --format='%(upstream:short)' refs/heads $localRef 2>/dev/null | grep $localRef)"
+    if [[ -n $remoteBranch ]]; then
+      printf '%s' $remoteBranch
+      return 0
+    else
+      return 1
+    fi
+  fi
+}
+
+commits_behind_of_remote() {
+  remote_branch=${1:-"$(remote_branch_name)"}
+  if [[ -n "$remote_branch" ]]; then
+    git rev-list --left-only --count ${remote_branch}...HEAD
+  else
+    printf '%s' "0"
+  fi
+}
+
+commits_ahead_of_remote() {
+  remote_branch=${1:-"$(remote_branch_name)"}
+  if [[ -n "$remote_branch" ]]; then
+    git rev-list --right-only --count ${remote_branch}...HEAD
+  else
+    printf '%s' "0"
+  fi
+}
+
+remote_behind_of_master() {
+  remote_branch=${1:-"$(remote_branch_name)"}
+  tracked_remote="origin/master"
+  if [[ -n "$remote_branch" && "$remote_branch" != "$tracked_remote" ]]; then
+    git rev-list --left-only --count ${tracked_remote}...${remote_branch} 2>/dev/null || printf '%s' "0"
+  else
+    printf '%s' "0"
+  fi
+}
+
+remote_ahead_of_master() {
+  remote_branch=${1:-"$(remote_branch_name)"}
+  tracked_remote="origin/master"
+  if [[ -n "$remote_branch" && "$remote_branch" != "$tracked_remote" ]]; then
+    git rev-list --right-only --count ${tracked_remote}...${remote_branch} 2>/dev/null || printf '%s' "0"
+  else
+    printf '%s' "0"
+  fi
+}
+
+# Diacritic marks for overlaying an arrow over A D C etc
+#us="\xE2\x83\x97{$reset_color%}"
+#them="\xE2\x83\x96%{$reset_color%}"
+#both="\xE2\x83\xA1%{$reset_color%}"
+
+is_dirty() {
+  if ! git rev-parse &> /dev/null; then
+    #not in repo, thus not dirty
+    return 1
+  else
+    #in repo, might be dirty
+    if [[ -n "$(git ls-files --exclude-standard --others 2>/dev/null)" ]]; then
+      #untracked files thus dirty
+      return 0
+    else
+      #no untracked files
+      if git show HEAD -- &> /dev/null; then
+        #has a commit hash, thus not on an initial commit
+        if ! git diff --quiet --ignore-submodules HEAD -- &> /dev/null; then
+          #has differences thus dirty
+          return 0
+        else
+          return 1
+        fi
+      else
+        #no commit hash, thus can't use HEAD.
+        #As it's inital commit we can just list the files.
+        if [[ -n "$(ls -a -1 "$(git_root)" | grep -Ev '(\.|\.\.|\.git)')" ]]; then
+          #files listed and no commit hash, thus changes
+          return 0
+        else
+          return 1
+        fi
+      fi
+    fi
+  fi
+}
+
+porcelain_status() {
+  printf '%s' "$(git status --porcelain 2>/dev/null)"
+}
+
+staged_status() {
+  local gitStatus=${1:-"$(porcelain_status)"}
+  local prefix=${2:-""}
+  local suffix=${3:-""}
+
+  local staged_string=""
+  local filesModified="$(printf '%s' "$gitStatus" | grep -oE "M[ACDRM ] " | wc -l | grep -oEi '[1-9][0-9]*')"
+  local filesAdded="$(printf '%s' "$gitStatus" | grep -oE "A[MCDR ] " | wc -l | grep -oEi '[1-9][0-9]*')"
+  local filesDeleted="$(printf '%s' "$gitStatus" | grep -oE "D[AMCR ] " | wc -l | grep -oEi '[1-9][0-9]*')"
+  local filesRenamed="$(printf '%s' "$gitStatus" | grep -oE "R[AMCD ] " | wc -l | grep -oEi '[1-9][0-9]*')"
+  local filesCopied="$(printf '%s' "$gitStatus" | grep -oE "C[AMDR ] " | wc -l | grep -oEi '[1-9][0-9]*')"
+
+  if [ -n "$filesAdded" ]; then
+    staged_string="$staged_string${prefix}${filesAdded}A${suffix}"
+  fi
+  if [ -n "$filesDeleted" ]; then
+    staged_string="$staged_string${prefix}${filesDeleted}D${suffix}"
+  fi
+  if [ -n "$filesModified" ]; then
+    staged_string="$staged_string${prefix}${filesModified}M${suffix}"
+  fi
+  if [ -n "$filesRenamed" ]; then
+    staged_string="$staged_string${prefix}${filesRenamed}R${suffix}"
+  fi
+  if [ -n "$filesCopied" ]; then
+    staged_string="$staged_string${prefix}${filesCopied}C${suffix}"
+  fi
+  printf '%s' "$staged_string"
+}
+
+conflicted_status() {
+  local gitStatus=${1:-"$(porcelain_status)"}
+  local prefix=${2:-""}
+  local suffix=${3:-""}
+  local conflicted_string=""
+
+  local filesUs="$(printf '%s' "$gitStatus" | grep -oE "[AD]U " | wc -l | grep -oEi '[1-9][0-9]*')"
+  local filesThem="$(printf '%s' "$gitStatus" | grep -oE "U[AD] " | wc -l | grep -oEi '[1-9][0-9]*')"
+  local filesBoth="$(printf '%s' "$gitStatus" | grep -oE "(UU|AA|DD) " | wc -l | grep -oEi '[1-9][0-9]*')"
+
+  if [ -n "$filesUs" ]; then
+    conflicted_string="$conflicted_string${prefix}${filesUs}U${suffix}"
+  fi
+  if [ -n "$filesThem" ]; then
+    conflicted_string="$conflicted_string${prefix}${filesThem}T${suffix}"
+  fi
+  if [ -n "$filesBoth" ]; then
+    conflicted_string="$conflicted_string${prefix}${filesBoth}B${suffix}"
+  fi
+  printf '%s' "$conflicted_string"
+}
+
+unstaged_status() {
+  local gitStatus=${1:-"$(porcelain_status)"}
+  local prefix=${2:-""}
+  local suffix=${3:-""}
+  local unstaged_string=""
+
+  local filesModified="$(printf '%s' "$gitStatus" | grep -oE "[ACDRM ]M " | wc -l | grep -oEi '[1-9][0-9]*')"
+  local filesDeleted="$(printf '%s' "$gitStatus" | grep -oE "[AMCR ]D " | wc -l | grep -oEi '[1-9][0-9]*')"
+
+  if [ -n "$filesDeleted" ]; then
+    unstaged_string="$unstaged_string${prefix}${filesDeleted}D${suffix}"
+  fi
+  if [ -n "$filesModified" ]; then
+    unstaged_string="$unstaged_string${prefix}${filesModified}M${suffix}"
+  fi
+  printf '%s' "$unstaged_string"
+}
+
+untracked_status() {
+  local gitStatus=${1:-"$(porcelain_status)"}
+  local prefix=${2:-""}
+  local suffix=${3:-""}
+  local untracked_string=""
+
+  local filesUntracked="$(printf '%s' "$gitStatus" | grep "?? " | wc -l | grep -oEi '[1-9][0-9]*')"
+
+  if [ -n "$filesUntracked" ]; then
+    untracked_string="$untracked_string$filesUntracked${prefix}A${suffix}"
+  fi
+  printf '%s' "$untracked_string"
+}
+
+bash_color_changes_status() {
+  local separator="${1:-}"
+
+  local porcelain="$(porcelain_status)"
+  local changes=""
+
+  if [[ -n "$porcelain" ]]; then
+    local green_staged_prefix="\x01\033[1;32m\x02"
+    local red_unstaged_prefix="\x01\033[1;31m\x02"
+    local yellow_conflicted_prefix="\x01\033[1;33m\x02"
+    local grey_untracked_prefix="\x01\033[1;37m\x02"
+    local reset_suffix="\x01\033[0m\x02"
+
+    local staged_changes="$(staged_status "$porcelain" "$green_staged_prefix" "$reset_suffix")"
+    local unstaged_changes="$(unstaged_status "$porcelain" "$red_unstaged_prefix" "$reset_suffix")"
+    local untracked_changes="$(untracked_status "$porcelain" "$grey_untracked_prefix" "$reset_suffix")"
+    local conflicted_changes="$(conflicted_status "$porcelain" "$yellow_conflicted_prefix" "$reset_suffix")"
+    if [[ -n "$staged_changes" ]]; then
+      staged_changes="$separator$staged_changes"
+    fi
+
+    if [[ -n "$unstaged_changes" ]]; then
+      unstaged_changes="$separator$unstaged_changes"
+    fi
+
+    if [[ -n "$conflicted_changes" ]]; then
+      conflicted_changes="$separator$conflicted_changes"
+    fi
+
+    if [[ -n "$untracked_changes" ]]; then
+      untracked_changes="$separator$untracked_changes"
+    fi
+
+    changes="$staged_changes$conflicted_changes$unstaged_changes$untracked_changes"
+  fi
+  printf "$changes"
+}
+
+bash_color_local_commits() {
+  local separator="${1:- }"
+
+  local green_ahead_arrow="\x01\033[1;32m\x02↑\x01\033[0m\x02"
+  local red_behind_arrow="\x01\033[1;31m\x02↓\x01\033[0m\x02"
+  local yellow_diverged_arrow="\x01\033[1;33m\x02⇵\x01\033[0m\x02"
+
+  local local_commits=""
+  if remote_branch="$(remote_branch_name)"; then
+    local_ahead="$(commits_ahead_of_remote "$remote_branch")"
+    local_behind="$(commits_behind_of_remote "$remote_branch")"
+
+    if [[ "$local_behind" -gt "0" && "$local_ahead" -gt "0" ]]; then
+      local_commits="$separator$local_behind$yellow_diverged_arrow$local_ahead"
+    elif [[ "$local_behind" -gt "0" ]]; then
+      local_commits="$separator$local_behind$red_behind_arrow"
+    elif [[ "$local_ahead" -gt "0" ]]; then
+      local_commits="$separator$local_ahead$green_ahead_arrow"
+    fi
+  fi
+  printf "$local_commits"
+}
+
+bash_color_remote_commits() {
+  local remote_master="\xF0\x9D\x98\xAE" # an italic m to represent master
+  local green_ahead_arrow="\x01\033[1;32m\x02←\x01\033[0m\x02"
+  local red_behind_arrow="\x01\033[1;31m\x02→\x01\033[0m\x02"
+  local yellow_diverged_arrow="\x01\033[1;33m\x02⇄\x01\033[0m\x02"
+  local not_upstream="\x01\033[1;31m\x02⚡\x01\033[0m\x02"
+
+  if remote_branch="$(remote_branch_name)"; then
+    remote_ahead="$(remote_ahead_of_master "$remote_branch")"
+    remote_behind="$(remote_behind_of_master "$remote_branch")"
+
+    if [[ "$remote_behind" -gt "0" && "$remote_ahead" -gt "0" ]]; then
+      remote="$remote_master $remote_behind $yellow_diverged_arrow $remote_ahead "
+    elif [[ "$remote_ahead" -gt "0" ]]; then
+      remote="$remote_master $green_ahead_arrow $remote_ahead "
+    elif [[ "$remote_behind" -gt "0" ]]; then
+      remote="$remote_master $remote_behind $red_behind_arrow "
+    fi
+  else
+    remote="upstream $not_upstream "
+  fi
+
+  printf "$remote"
+}
+
 prompt_git() {
 	local s='';
 	local branchName='';
@@ -22,25 +411,7 @@ prompt_git() {
 			# Ensure the index is up to date.
 			git update-index --really-refresh -q &>/dev/null;
 
-			# Check for uncommitted changes in the index.
-			if ! $(git diff --quiet --ignore-submodules --cached); then
-				s+='+';
-			fi;
-
-			# Check for unstaged changes.
-			if ! $(git diff-files --quiet --ignore-submodules --); then
-				s+='!';
-			fi;
-
-			# Check for untracked files.
-			if [ -n "$(git ls-files --others --exclude-standard)" ]; then
-				s+='?';
-			fi;
-
-			# Check for stashed files.
-			if $(git rev-parse --verify refs/stash &>/dev/null); then
-				s+='$';
-			fi;
+			s+=$(bash_color_changes_status)
 
 		fi;
 
@@ -51,9 +422,9 @@ prompt_git() {
 			git rev-parse --short HEAD 2> /dev/null || \
 			echo '(unknown)')";
 
-		[ -n "${s}" ] && s=" [${s}]";
+		[ -n "${s}" ] && s=" ${blue}[${reset}${s}${blue}]";
 
-		echo -e "${1}${branchName}${blue}${s}";
+		echo -e "${1}${branchName}${s}";
 	else
 		return;
 	fi;
