@@ -1,6 +1,9 @@
 # init rbenv
 eval "$(rbenv init -)"
 
+# create a softlink for diff-highlight
+ln -sf "$(brew --prefix)/share/git-core/contrib/diff-highlight/diff-highlight" ~/bin/diff-highlight
+
 # Add `~/bin` to the `$PATH`
 export PATH="$HOME/bin:$PATH";
 
