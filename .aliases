@@ -143,3 +143,6 @@ restartBluetooth() {
 
 alias bluetooth-reset=restartBluetooth
 alias btr=bluetooth-reset
+
+# setup terminal to connect to docker
+alias dockerup="eval $(docker-machine env)"
