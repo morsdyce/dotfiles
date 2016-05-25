@@ -148,5 +148,9 @@ alias btr=bluetooth-reset
 alias dockerup="eval $(docker-machine env)"
 
 # stop all running docker containers
-alias dockerstop="docker stop `docker ps -aq`"
-alias ds="dockerstop"
+stopDockerContainers() {
+ docker stop `docker ps -aq`
+}
+
+alias dockerstop=stopDockerContainers
+alias ds=stopDockerContainers
