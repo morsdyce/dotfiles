@@ -146,3 +146,7 @@ alias btr=bluetooth-reset
 
 # setup terminal to connect to docker
 alias dockerup="eval $(docker-machine env)"
+
+# stop all running docker containers
+alias dockerstop="docker stop `docker ps -aq`"
+alias ds="dockerstop"
