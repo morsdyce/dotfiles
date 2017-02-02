@@ -156,3 +156,9 @@ alias dockerstop=stopDockerContainers
 alias ds=stopDockerContainers
 alias docker-pause="VBoxManage controlvm default savestate"
 alias docker-resume="docker-machine start default && eval $(docker-machine-env default)"
+
+function getPullRequest() {
+  git fetch origin pull/$1/head:pr-$1
+  git checkout pr-$1
+}
+alias get-pr=getPullRequest
