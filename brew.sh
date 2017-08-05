@@ -52,6 +52,7 @@ brew install autojump
 brew install ssh-copy-id
 brew install thefuck
 brew install node
+brew install watchman
 
 # Install Cask
 brew tap caskroom/cask
