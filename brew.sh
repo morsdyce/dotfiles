@@ -49,9 +49,9 @@ brew install tree
 brew install vbindiff
 brew install zopfli
 brew install autojump
-brew install rbenv
 brew install ssh-copy-id
 brew install thefuck
+brew install node
 
 # Install Cask
 brew tap caskroom/cask
