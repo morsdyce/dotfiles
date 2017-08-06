@@ -4,6 +4,8 @@ ln -sf "$(brew --prefix)/share/git-core/contrib/diff-highlight/diff-highlight" ~
 # Add `~/bin` to the `$PATH`
 export PATH="$HOME/bin:$PATH";
 
+. /usr/local/etc/profile.d/z.sh
+
 # Load the shell dotfiles, and then some:
 # * ~/.path can be used to extend `$PATH`.
 # * ~/.extra can be used for other settings you don’t want to commit.

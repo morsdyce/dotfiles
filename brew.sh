@@ -53,6 +53,7 @@ brew install ssh-copy-id
 brew install thefuck
 brew install node
 brew install watchman
+brew install z
 
 # Install Cask
 brew tap caskroom/cask
@@ -84,4 +85,4 @@ brew cask install slack
 brew cask install android-studio
 
 brew cleanup
-
+brew cask cleanup
